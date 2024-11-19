@@ -1,16 +1,15 @@
 package telran.employees;
 
-import java.lang.reflect.*;
-import java.util.Arrays;
-import java.util.NoSuchElementException;
+import telran.io.*;
+import telran.net.*;
 
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.*;
 import org.json.JSONArray;
 
-import telran.net.Protocol;
-import telran.net.Request;
-import telran.net.Response;
-import telran.net.ResponseCode;
-
+import static telran.employees.Config.*;
 public class CompanyProtocol implements Protocol {
     Company company;
 
@@ -20,68 +19,61 @@ public class CompanyProtocol implements Protocol {
 
     @Override
     public Response getResponse(Request request) {
-        String requestType = request.requestType();
-        String requestData = request.requestData();
+        String type = request.requestType();
+        String data = request.requestData();
         Response response = null;
         try {
-            Method method = CompanyProtocol.class.getDeclaredMethod(requestType, String.class);
+            Method method = CompanyProtocol.class.getDeclaredMethod(type, String.class);
             method.setAccessible(true);
-            response = (Response) method.invoke(this, requestData);
+            response = (Response) method.invoke(this, data);
         } catch (NoSuchMethodException e) {
-            response = new Response(ResponseCode.WRONG_TYPE, requestType + " Wrong type");
-           
+            response = new Response(ResponseCode.WRONG_TYPE, "Wrong type of command to server");
         } catch (InvocationTargetException e) {
             Throwable causeExc = e.getCause();
-            String message = causeExc == null ? e.getMessage() : causeExc.getMessage();
-            response = new Response(ResponseCode.WRONG_DATA, message);
-        } catch (Exception e){
-            //only for finishing Server and printing out Exception full stack
+            String msg = causeExc == null ? e.getMessage() : causeExc.getMessage();
+            response = new Response(ResponseCode.WRONG_DATA, msg);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
-       
         return response;
     }
 
-    Response getOkResponse(String responseData) {
-        return new Response(ResponseCode.OK, responseData);
+    private Response addEmployee(String data) {
+        Employee employee = Employee.getEmployeeFromJSON(data);
+        company.addEmployee(employee);
+        return new Response(ResponseCode.OK, "");
     }
 
-    Response addEmployee(String requestData) {
-        Employee empl = Employee.getEmployeeFromJSON(requestData);
-        company.addEmployee(empl);
-        return getOkResponse("");
+    private Response removeEmployee(String data) {
+        long id = Long.valueOf(data);
+        Employee employee = company.removeEmployee(id);
+        return new Response(ResponseCode.OK, employee.toString());
     }
 
-    Response getEmployee(String requestData) {
-        long id = Long.parseLong(requestData);
-        Employee empl = company.getEmployee(id);
-        if (empl == null) {
-            throw new NoSuchElementException(String.format("Employee %d not found", id));
+    private Response getEmployee(String data) {
+        long id = Long.valueOf(data);
+        Employee employee = company.getEmployee(id);
+        if (employee == null) {
+            throw new NoSuchElementException("Employee with this id is not found in the company");
         }
-        return getOkResponse(empl.toString());
+        return new Response(ResponseCode.OK, employee.toString());
     }
 
-    Response removeEmployee(String requestData) {
-        long id = Long.parseLong(requestData);
-        Employee empl = company.removeEmployee(id);
-        return getOkResponse(empl.toString());
-    }
-
-    Response getDepartmentBudget(String requestData) {
-        int budget = company.getDepartmentBudget(requestData);
-        return getOkResponse(budget + "");
-    }
-
-    Response getDepartments(String requestData) {
-        String[] departments = company.getDepartments();
-        JSONArray jsonArray = new JSONArray(departments);
-        return getOkResponse(jsonArray.toString());
-    }
-
-    Response getManagersWithMostFactor(String requestData) {
+    private Response getManagersWithMostFactor(String data) {
         Manager[] managers = company.getManagersWithMostFactor();
-        JSONArray jsonArray = new JSONArray(Arrays.stream(managers).map(Manager::toString).toList());
-        return getOkResponse(jsonArray.toString());
+        String[] jsonStrings = Arrays.stream(managers).map(Manager::toString).toArray(String[]::new);
+        JSONArray jsonArray = new JSONArray(jsonStrings);
+        return new Response(ResponseCode.OK, jsonArray.toString());
     }
 
+    private Response getDepartments(String data) {
+        String[] departments = company.getDepartments();
+        JSONArray departmentsJSON = new JSONArray(departments);
+        return new Response(ResponseCode.OK, departmentsJSON.toString());
+    }
+
+    private Response getDepartmentBudget(String data) {
+        int buget = company.getDepartmentBudget(data);
+        return new Response(ResponseCode.OK, buget + "");
+    }
 }
